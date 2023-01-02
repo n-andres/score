@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>TFJS Firebase example</title>
+<div>
+  <input id="imageInput" type="file" class="file-select" accept="image/*" onchange="uploadPhotos()" />
+  <img id="preview"></img>
+  <br />
+  <br />
+  <button class="file-submit" onclick="readFile()">SUBMIT</button>
+  <br />
+  <br />
+  <div id="time"></div>
+  <br />
+  <br />
+  <canvas id="canvas"></canvas>
+  <a href="#" class="button" id="btn-download">Download</a>
+  <button id="mydownload">SAVE</button>
+  <br />
+</div>
+<script>
+//<form action="/predict" method="post">
+//  <input id="imageInput" type="file" class="file-select" accept="image/*" />
+//  <input type="submit" value="Submit">
+// </form> 
+    // Converts canvas to an image
+    function convertCanvasToImage(canvas) {
+        var image = new Image();
+        image.src = canvas.toDataURL("image/png");
+        return image;
+    }
+
+document.getElementById('mydownload').onclick= function(){
+    var image = convertCanvasToImage(document.getElementById("canvas"));
+    var anchor = document.createElement('a');
+
+    console.log(anchor);
+    anchor.setAttribute('href', image.src);
+    anchor.setAttribute('download', 'image.png');
+    anchor.click();
+}
+var button = document.getElementById('btn-download');
+button.addEventListener('click', function (e) {
+    var dataURL = canvas.toDataURL('image/png');
+    button.href = dataURL;
+});
+
+  let labelColor = {
+    'A': {
+        color: 'red',
+    },
+    'B': {
+        color: 'green',
+    },
+    'C': {
+	    color: 'blue',
+    },
+    'D': {
+        color: 'magenta',
+    },
+    'X': {
+        color: 'black',
+    }
+}
+
+function dataURLToBlob(dataURL) {
+    var BASE64_MARKER = ';base64,';
+
+    if (dataURL.indexOf(BASE64_MARKER) == -1) {
+        var parts = dataURL.split(',');
+        var contentType = parts[0].split(':')[1];
+        var raw = decodeURIComponent(parts[1]);
+
+        return new Blob([raw], {type: contentType});
+    }
+
+    var parts = dataURL.split(BASE64_MARKER);
+    var contentType = parts[0].split(':')[1];
+    var raw = window.atob(parts[1]);
+    var rawLength = raw.length;
+
+    var uInt8Array = new Uint8Array(rawLength);
+
+    for (var i = 0; i < rawLength; ++i) {
+        uInt8Array[i] = raw.charCodeAt(i);
+    }
+
+    return new Blob([uInt8Array], {type: contentType});
+}
+
+window.uploadPhotos = function(url){
+    // Read in file
+    var file = event.target.files[0];
+
+    // Ensure it's an image
+    if(file.type.match(/image.*/)) {
+        console.log('An image has been loaded');
+
+        // Load the image
+        var reader = new FileReader();
+        reader.onload = function (readerEvent) {
+            var image = new Image();
+            image.onload = function (imageEvent) {
+
+                // Resize the image
+                var canvas = document.createElement('canvas'),
+                    max_size = 1024,//544,// TODO : pull max size from a site config
+                    width = image.width,
+                    height = image.height;
+                if (width > height) {
+                    if (width > max_size) {
+                        height *= max_size / width;
+                        width = max_size;
+                    }
+                } else {
+                    if (height > max_size) {
+                        width *= max_size / height;
+                        height = max_size;
+                    }
+                }
+                canvas.width = width;
+                canvas.height = height;
+                canvas.getContext('2d').drawImage(image, 0, 0, width, height);
+				
+				//canvas.width = 1024;
+                //canvas.height = 1024;
+                
+				var dataUrl = canvas.toDataURL('image/jpeg');
+                document.getElementById("preview").src = dataUrl;
+                // var resizedImage = dataURLToBlob(dataUrl);
+                // $.event.trigger({
+                //     type: "imageResized",
+                //     blob: resizedImage,
+                //     url: dataUrl
+                // });
+            }
+            image.src = readerEvent.target.result;
+        }
+        reader.readAsDataURL(file);
+    }
+};
+
+   //var fs = require('fs');
+  function readFile() {
+    if (!(window.File && window.FileReader && window.FileList && window.Blob)) {
+      alert('The File APIs are not fully supported in this browser.');
+      return;
+    }
+    //input = document.getElementById('imageInput');
+    input = document.getElementById('preview');
+    if (input) {
+    // if (!input) {
+    //   alert("Um, couldn't find the fileinput element.");
+    // } else if (!input.files) {
+    //   alert("This browser doesn't seem to support the `files` property of file inputs.");
+    // } else if (!input.files[0]) {
+    //   alert("Please select a file before clicking 'Load'");
+    // } else {
+      file = dataURLToBlob(input.src)//.files[0];
+	  console.log(input.src)
+      console.log(file)
+      const formData = new FormData();
+	  //const formData = new URLSearchParams()
+      formData.append('image', file);
+	  //formData.append('data', file);
+      //fetch(window.location.pathname + '/predict', {
+	  fetch("http://localhost:5000/predict", {
+        method: 'POST',
+        body: formData,
+      }).then(response => response.json()).then(res => {
+        const context = document.getElementById('canvas').getContext('2d');
+        const timeDiv = document.getElementById('time');
+
+        var FR = new FileReader();
+        FR.onload = function (e) {
+          var img = new Image();
+          var height = 1024;//window.innerHeight*.8;
+          var width = 1024;//height;
+          img.addEventListener("load", function () {
+            timeDiv.innerHTML = 'Inference time: ' + res.inferenceTime;
+            document.getElementById('canvas').width = width;
+            document.getElementById('canvas').height = height;
+            context.drawImage(img, 0, 0, width, height);
+            for (let i = 0; i < res.annotated_boxes.length; i++) {
+                
+              const annotated_box = res.annotated_boxes[i];
+              const box = annotated_box.box;//res.boxes[i];
+              context.fillStyle = 'rgba(255,255,255,0.2';
+              //context.strokeStyle = 'white';
+              //context.strokeStyle = labelColor[res.names[i]].color;
+              context.strokeStyle = labelColor[annotated_box.name].color;
+              context.fillRect(box[1] * width, box[0] * height, width * (box[3] - box[1]), height * (box[2] - box[0]));
+              context.font = '15px Arial';
+              context.fillStyle = 'black';//'white';
+              context.fillText(annotated_box.name, box[1] * width - width * (box[3] - box[1]), box[0] * height, box[0] * height);
+              //context.fillText(annotated_box.name, box[3] * width + width * (box[3] - box[1]), box[2] * height, box[2] * height);
+              
+              context.lineWidth = 2;
+              context.strokeRect(box[1] * width, box[0] * height, width * (box[3] - box[1]),
+                height * (box[2] - box[0]));
+            }
+            const annotated_box = res.annotated_boxes[39];
+            const box = annotated_box.box;
+            context.fillText(res.score, box[1] * width - width * (box[3] - box[1]), box[0] * height, box[0] * height);
+                          
+          });
+          img.src = e.target.result;
+        };
+        FR.readAsDataURL(file);
+      });
+    }
+
+  }
+</script>
